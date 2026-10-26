@@ -2007,7 +2007,7 @@ public class PlanComponent extends JComponent implements PlanView, Scrollable, P
    * Prints this component plan at the scale given in the home print attributes or at a scale 
    * that makes it fill <code>pageFormat</code> imageable size if this attribute is <code>null</code>.
    */
-  public int print(Graphics g, PageFormat pageFormat, int pageIndex) {
+  private int printSelectedLevel(Graphics g, PageFormat pageFormat, int pageIndex) {
     List<Selectable> printedItems = getPaintedItems(); 
     Rectangle2D printedItemBounds = getItemsBounds(g, printedItems);
     if (printedItemBounds != null) {
@@ -2074,7 +2074,71 @@ public class PlanComponent extends JComponent implements PlanView, Scrollable, P
       return NO_SUCH_PAGE;
     }
   }
-  
+
+  /**
+   * Returns the number of plan pages needed to print the selected level.
+   */
+  private int getPlanPageCount(Graphics g, PageFormat pageFormat) {
+    List<Selectable> printedItems = getPaintedItems();
+    Rectangle2D printedItemBounds = getItemsBounds(g, printedItems);
+
+    if (printedItemBounds == null) {
+      return 0;
+    }
+
+    if (this.home.getPrint() == null || this.home.getPrint().getPlanScale() == null) {
+      return 1;
+    }
+
+    float printScale = this.home.getPrint().getPlanScale() * LengthUnit.centimeterToInch(72);
+    double imageableWidth = pageFormat.getImageableWidth();
+    double imageableHeight = pageFormat.getImageableHeight();
+    int pagesPerRow = (int)(printedItemBounds.getWidth() * printScale / imageableWidth);
+
+    if (printedItemBounds.getWidth() * printScale != imageableWidth) {
+      pagesPerRow++;
+    }
+
+    int pagesPerColumn = (int)(printedItemBounds.getHeight() * printScale / imageableHeight);
+
+    if (printedItemBounds.getHeight() * printScale != imageableHeight) {
+      pagesPerColumn++;
+    }
+
+    return pagesPerRow * pagesPerColumn;
+  }
+
+  public int print(Graphics g, PageFormat pageFormat, int pageIndex) {
+    Level selectedLevel = this.home.getSelectedLevel();
+    List<Level> levels = new ArrayList<Level>();
+    for (Level level : this.home.getLevels()) {
+      if (level.isViewable()) {
+        levels.add(level);
+      }
+    }
+    if (levels.isEmpty()) {
+      // if it's a home without levels, call the original method
+      return printSelectedLevel(g, pageFormat, pageIndex);
+    }
+
+    int result = NO_SUCH_PAGE;
+    int firstPageOfLevel = 0;
+    boolean found = false;
+    for (int i = 0; i < levels.size() && !found; i++) {
+      this.home.setSelectedLevel(levels.get(i));
+      int levelPageCount = getPlanPageCount(g, pageFormat);
+      if (pageIndex < firstPageOfLevel + levelPageCount) {
+        result = printSelectedLevel(g, pageFormat, pageIndex - firstPageOfLevel);
+        found = true;
+      }
+      firstPageOfLevel += levelPageCount;
+    }
+    this.home.setSelectedLevel(selectedLevel);
+    return result;
+  }
+
+
+
   /**
    * Returns an image of the selected items displayed by this component 
    * (camera excepted) with no outline at scale 1/1 (1 pixel = 1cm).
